@@ -1,0 +1,74 @@
+---
+# This playbook responsible to install all the necessary packages to run weight_app
+- hosts: all #{{hosts_group}}
+  vars_files:
+    - var_stag
+  become: true
+
+# First initialize postgresSQL
+  tasks:
+  
+    - name: Update & upgrade packages
+      apt:
+        upgrade: 'True'
+        update_cache: yes
+
+    - name: Update nodejs package
+      shell: curl -fsSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+
+    - name: Install nodejs
+      apt:
+        name: nodejs
+        state: present
+
+    - name: Clone a github repository
+      git:
+        repo: "{{deployRepo}}"
+        dest: "{{githubPath}}"
+        
+        clone: yes
+        update: yes
+    # .env file
+    - name: Create environment variables file
+      copy:
+        dest: "{{ githubPath }}/.env"
+        content: |
+          # Host configuration
+          PORT={{port_web}}
+          HOST=0.0.0.0
+
+          # Postgres configuration
+          PGHOST={{PGHOST}}
+          PGUSERNAME={{PGUSERNAME}}
+          PGDATABASE={{PGDATABASE}}
+          PGPASSWORD={{PGPASSWORD}}
+          PGPORT={{PGPORT}}
+
+          HOST_URL={{HOST_URL}}
+          COOKIE_ENCRYPT_PWD={{COOKIE_ENCRYPT_PWD}}
+          NODE_ENV={{NODE_ENV}}
+
+          # Okta configuration
+          OKTA_ORG_URL={{OKTA_ORG_URL}}
+          OKTA_CLIENT_ID={{OKTA_CLIENT_ID}}
+          OKTA_CLIENT_SECRET={{OKTA_CLIENT_SECRET}}
+          
+    - name: Install npm
+      shell: npm install
+      args:
+        chdir: "{{githubPath}}"
+
+    - name: Database initialization
+      shell: npm run initdb
+      args:
+        chdir: "{{githubPath}}"
+
+    - name: Install pm2
+      shell: npm install pm2@latest -g
+
+    - name: Run application
+      shell: pm2 start npm -- run dev && pm2 save && pm2 startup
+      args:
+        chdir: "{{githubPath}}"
+    - name: Reboot
+      command: sudo reboot
